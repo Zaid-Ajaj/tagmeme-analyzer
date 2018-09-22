@@ -297,7 +297,7 @@ const analyze = function (cwd, filename, syncReader) {
                                 usedUnionType: declaredUnion.unionType,
                                 usedUnionCase: currentKey, 
                                 possibleAlternatives: nearbyWords,
-                                errorMessage: "Detected match against union case '" + currentKey + "' but no declaration of this case was found in type " + declaredUnion.unionType + ", did you mean '" + nearbyWords[0] + "'?"
+                                errorMessage: "Detected match against union case '" + currentKey + "' but no declaration of this case was found in type '" + declaredUnion.unionType + "', did you mean '" + nearbyWords[0] + "'?"
                             }));
  
                         } else {

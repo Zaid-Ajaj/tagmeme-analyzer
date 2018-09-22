@@ -5,10 +5,9 @@ Static code analyzer and CLI tool for javascript to verify correctness of patter
 When using `tagmeme`, you have to define the union cases as strings, here is an example:
 ```js
 import { union } from "tagemem" 
-
 const Option = union([ "Some", "None" ])
 ```
-here we are declaring the `Option` type that can either be `Some` or `None`. These two cases are considered constructors when creating a value of the `Option` type:
+We are declaring the `Option` type that can either be `Some` or `None`. These two cases are considered constructors when creating a value of the `Option` type:
 ```js
 const color = Option.Some("green");
 ```
@@ -27,7 +26,7 @@ I really like the API but because this is javascript, it can be very error prone
  - Using duplicate union cases in the declaration
 
 ## Solution: Static code analysis
-Because there are known variables where things could go wrong at "compile" time, why not write a program that checks the correctness of pattern matching? This is what this tool provides implemented as a cli tool for easy integration with existing projects:
+Because there are known variables where things could go wrong at "compile" time, why not write a program that checks the correctness of pattern matching? This is what this project provides implemented as a cli tool for easy integration with existing projects:
 ```
 npm install --save-dev tagmeme-analyzer
 ```
@@ -45,7 +44,7 @@ import { Option, Result } from './types'
 
 const color = Option.Some('green')
 
-// Correct usage, no errors
+// Correct use, no errors
 const colorValue = Option.match(color, {
     Some: colorName => colorName, 
     None: () => 'blue'
@@ -57,7 +56,7 @@ const otherValue = Opion.match(color, {
     None: () => 'blue'
 });
 
-// Error misspelled => 'Erro'
+// Union case misspelled: 'Error' => 'Erro'
 const firstResult = Result.match(Result.Ok('success'), {
     Ok: value => value, 
     Erro: () => 'blue'
@@ -70,7 +69,7 @@ const secondResult = Result.match(Result.Ok('success'), {
     Other: () => 'too many cases handled'
 });
 
-// redundant catchAll argument
+// Redundant catchAll (second argument)
 const withCatchAll = Option.match(color, {
     Some: colorName => colorName, 
     None: () => 'blue'
