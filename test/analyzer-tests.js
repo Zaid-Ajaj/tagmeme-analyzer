@@ -58,6 +58,21 @@ describe("Analyzer", function() {
         });
     });
 
+    describe("findExports()", function() {
+        it("Returns the exported declarations", function() {
+            const code = [
+                "import { union } from 'tagmeme'",
+                "export const Option = union([ 'Some', 'None' ])",
+                "export const Result = union([ 'Ok', 'Error' ])"
+            ]
+
+            const ast = babelParser.parse(code.join("\n"), { sourceType: "module" });
+            const foundExports = analyzer.findExports(ast.program.body);
+            assert.equal(2, foundExports.length);
+        });
+    });
+
+
     describe("findUnionDeclarations()", function() {
 
         it("finds declarations constructed using 'union'", function() {
@@ -68,8 +83,9 @@ describe("Analyzer", function() {
             ];
 
             const ast = babelParser.parse(code.join("\n"), { sourceType: "module" });
-            const unionImports = analyzer.findImports(ast.program.body);
-            const declarations = analyzer.findUnionDeclarations(ast.program.body, unionImports);
+            const irrelevantFile = "./irrelevant"
+            const irrelevantReader = filePath => "Some content";
+            const declarations = analyzer.findUnionDeclarations(ast.program.body, irrelevantFile, irrelevantReader);
             assert.equal(1, declarations.length);
             assert.equal("Option", declarations[0].unionType);
             assert.deepEqual([ 'Some', 'None' ], declarations[0].cases);
@@ -83,8 +99,9 @@ describe("Analyzer", function() {
             ];
 
             const ast = babelParser.parse(code.join("\n"), { sourceType: "module" });
-            const unionImports = analyzer.findImports(ast.program.body);
-            const declarations = analyzer.findUnionDeclarations(ast.program.body, unionImports);
+            const irrelevantFile = "./irrelevant"
+            const irrelevantReader = filePath => "Some content";
+            const declarations = analyzer.findUnionDeclarations(ast.program.body, irrelevantFile, irrelevantReader);
             assert.equal(1, declarations.length);
             assert.equal("Option", declarations[0].unionType);
             assert.deepEqual([ 'Some', 'None' ], declarations[0].cases);
@@ -99,13 +116,55 @@ describe("Analyzer", function() {
             ];
 
             const ast = babelParser.parse(code.join("\n"), { sourceType: "module" });
-            const unionImports = analyzer.findImports(ast.program.body);
-            const declarations = analyzer.findUnionDeclarations(ast.program.body, unionImports);
+            const irrelevantFile = "./irrelevant"
+            const irrelevantReader = filePath => "Some irrelevant content that will not be read";
+            const declarations = analyzer.findUnionDeclarations(ast.program.body, irrelevantFile, irrelevantReader);
             assert.equal(2, declarations.length);
             assert.equal("Option", declarations[0].unionType);
             assert.deepEqual([ 'Some', 'None' ], declarations[0].cases);
             assert.equal("Result", declarations[1].unionType);
             assert.deepEqual([ 'Ok', 'Error' ], declarations[1].cases);
+        });
+
+        it("finds exported declarations", function() {
+            const code = [ 
+                "import { union as makeUnion } from 'tagmeme'",
+                "export const Option = makeUnion([ 'Some', 'None' ])",
+                "export const Result = makeUnion([ 'Ok', 'Error' ])"
+            ];
+
+            const ast = babelParser.parse(code.join("\n"), { sourceType: "module" });
+            const irrelevantFile = "./irrelevant"
+            const irrelevantReader = filePath => "Some irrelevant content that will not be read";
+            const declarations = analyzer.findUnionDeclarations(ast.program.body, irrelevantFile, irrelevantReader);
+            assert.equal(2, declarations.length);
+            assert.equal("Option", declarations[0].unionType);
+            assert.deepEqual([ 'Some', 'None' ], declarations[0].cases);
+            assert.equal("Result", declarations[1].unionType);
+            assert.deepEqual([ 'Ok', 'Error' ], declarations[1].cases);
+        });
+
+        it("finds external declarations", function() {
+            const types = [
+                "import { union } from 'tagmeme'",
+                "export const Result = union([ 'Ok', 'Error' ])",
+                "export const Option = union([ 'Some', 'None' ])"
+            ];
+
+            const app = [
+                "import { Option } from './types'",
+                "import { Result } from './types'"
+            ]
+
+            const ast = babelParser.parse(app.join("\n"), { sourceType: "module" });
+            const irrelevantFile = "./irrelevant"
+            const typesReader = filePath => types.join("\n");
+            const declarations = analyzer.findUnionDeclarations(ast.program.body, irrelevantFile, typesReader);
+            assert.equal(2, declarations.length);
+            assert.equal("Option", declarations[1].unionType);
+            assert.deepEqual([ 'Some', 'None' ], declarations[1].cases);
+            assert.equal("Result", declarations[0].unionType);
+            assert.deepEqual([ 'Ok', 'Error' ], declarations[0].cases);
         });
     });
 
@@ -122,7 +181,7 @@ describe("Analyzer", function() {
             ];
 
             const mockReader = filename => code.join("\n");
-            const errors = analyzer.analyze("./irrelevant-filename", mockReader);
+            const errors = analyzer.analyze("cwd", "./irrelevant-filename", mockReader);
             assert.equal(0, errors.length);
         }); 
 
@@ -139,7 +198,7 @@ describe("Analyzer", function() {
             ];
 
             const mockReader = filename => code.join("\n");
-            const errors = analyzer.analyze("./irrelevant-filename", mockReader);
+            const errors = analyzer.analyze("cwd", "./irrelevant-filename", mockReader);
             assert.equal(1, errors.length);
             
             AnalyzerError.match(errors[0], {
@@ -160,7 +219,7 @@ describe("Analyzer", function() {
             ];
 
             const mockReader = filename => code.join("\n");
-            const errors = analyzer.analyze("./irrelevant-filename", mockReader);
+            const errors = analyzer.analyze("cwd", "./irrelevant-filename", mockReader);
             assert.equal(1, errors.length);
             
             AnalyzerError.match(errors[0], {
@@ -180,7 +239,7 @@ describe("Analyzer", function() {
             ];
 
             const mockReader = filename => code.join("\n");
-            const errors = analyzer.analyze("./irrelevant-filename", mockReader);
+            const errors = analyzer.analyze("cwd", "./irrelevant-filename", mockReader);
             assert.equal(0, errors.length);
         }); 
 
@@ -194,7 +253,7 @@ describe("Analyzer", function() {
             ];
 
             const mockReader = filename => code.join("\n");
-            const errors = analyzer.analyze("./irrelevant-filename", mockReader);
+            const errors = analyzer.analyze("cwd", "./irrelevant-filename", mockReader);
             assert.equal(1, errors.length);
             AnalyzerError.match(errors[0], { 
                 UnionCaseHandledButNotDeclared: errorInfo => {
@@ -214,12 +273,44 @@ describe("Analyzer", function() {
             ];
 
             const mockReader = filename => code.join("\n");
-            const errors = analyzer.analyze("./irrelevant-filename", mockReader);
+            const errors = analyzer.analyze("cwd", "./irrelevant-filename", mockReader);
             assert.equal(1, errors.length);
             AnalyzerError.match(errors[0], 
                 { RedundantCatchAllArgument: errorInfo => assert.ok(true) }, 
                 () => assert.fail('Expected analyzer error of union case UnionCaseHandledButNotDeclared')
             );
         }); 
+
+        it("returns errors from imported union declarations", function() {
+            const types = [
+                "import { union } from 'tagmeme';",
+                "export const Result = union([ 'Ok', 'Error' ]);"
+            ];  
+            
+            const code = [ 
+                "import { Result } from './types'",
+                "const success = Result.Ok(1);",
+                // Error => handling too many cases, the 'Other' case in not declared in the `Result`
+                "const value = Result.match(success, { Ok: n => n + 1, Error: () => 1, Other: () => 3 })"
+            ];
+
+            const mockReader = filename => {
+                if (filename.indexOf("code") !== -1 && filename.indexOf("types") === -1) {
+                    return code.join("\n");
+                } else {
+                    return types.join("\n");
+                }
+            };
+
+
+            const errors = analyzer.analyze("cwd", "./code", mockReader);
+            assert.equal(1, errors.length);
+            AnalyzerError.match(errors[0], { 
+                UnionCaseHandledButNotDeclared: errorInfo => {
+                    assert.equal('Result', errorInfo.usedUnionType);
+                    assert.equal('Other', errorInfo.usedUnionCase);
+                }
+            }, () => assert.fail('Expected analyzer error of union case UnionCaseHandledButNotDeclared'));
+        });
     });
 });

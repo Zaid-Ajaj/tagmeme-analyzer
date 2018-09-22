@@ -11,11 +11,13 @@ const AnalyzerError = union([
     'UnionTypeNameIncorrect', 
     'UnionCaseDeclaredButNotHandled',
     'UnionCaseHandledButNotDeclared',
-    'RedundantCatchAllArgument'
+    'RedundantCatchAllArgument',
+    'UsingMatchAsUnionCase'
 ]); 
 
-
-// detect: import { union } from 'tagmeme' 
+// detects when the 'union' function is imported from tagmeme in ES6 syntax
+// default import: import { union } from 'tagmeme'
+// aliased import: import { union as makeUnion } from 'tagmeme'
 const unionImported = function(node) {
     return node.type === "ImportDeclaration" 
         && node.specifiers.length === 1
@@ -23,7 +25,9 @@ const unionImported = function(node) {
         && node.source.value === "tagmeme";
 }
 
-// detect: const union = require('tagmeme').union
+// detects when the 'union' function is imported from tagmeme in ES5 syntax
+// default import: const union = require('tagmeme').union
+// aliased import: const makeUnion = requore('tagmeme').union
 const unionRequired = function (node) {
     return node.type === "VariableDeclaration"
         && node.declarations.length === 1 
@@ -35,33 +39,93 @@ const unionRequired = function (node) {
         && node.declarations[0].init.object.arguments[0].value === "tagmeme";
 }
 
+const localValueImport = function (node) {
+    return node.type === "ImportDeclaration" 
+        && node.source.type === "StringLiteral"
+        && node.source.value.startsWith(".")
+}
+
+// type ImportDecl =
+// | UnionImport of { local: string, imported: string, union: bool } 
+// | LocalImport of { union: bool, imports: [{ local: string, imported: string }]
+
+// findImports : Node array -> ImportDecl array
 const findImports = function (nodes) {
     return nodes
-        .filter(node => unionImported(node) || unionRequired(node))
+        .filter(node => unionImported(node) || unionRequired(node) || localValueImport(node))
         .map(node => {
             if (unionImported(node)) {
                 return { 
                     imported: node.specifiers[0].imported.name,
-                    local: node.specifiers[0].local.name 
+                    local: node.specifiers[0].local.name,
+                    union: true 
                 }
-            } else {
+            } else if (unionRequired(node)) {
                 return {
                     local: node.declarations[0].id.name, 
-                    imported: node.declarations[0].init.property.name
+                    imported: node.declarations[0].init.property.name,
+                    union: true 
+                }
+            } else {
+                // local imports
+                return {
+                    union: false, 
+                    source: node.source.value,
+                    imports: node.specifiers.map(spec => {
+                        return {
+                            local: spec.local.name,
+                            imported: spec.imported.name
+                        }
+                    })
                 }
             }
         });
 }
 
-const findUnionDeclarations = function (nodes, tagmemeImports) {
-    
-    if (tagmemeImports.length === 0) {
-        return []
-    };
-
-    const localUnionId = tagmemeImports[0].local;
-
+const findExports = function (nodes) {
+    //console.log(nodes);
     return nodes.filter(node => {
+        return node.type === "ExportNamedDeclaration"
+    }).map(node => {
+        return node.declaration;
+    });
+}
+
+const findUnionDeclarations = function (nodes, currentFile, readFile) {
+    
+    const importDeclarations = findImports(nodes);
+    const unionImports = importDeclarations.filter(decl => decl.union); 
+    const localImports =  importDeclarations.filter(decl => !decl.union);
+    const externalDeclarations = [];
+
+    if (localImports.length > 0) {
+        
+        // find exports from external file
+        // match with imported values
+        for (var i = 0; i < localImports.length; i++) {
+            const importDecl = localImports[i];
+            const externalFile = importDecl.source; 
+            const withExtension = externalFile.endsWith(".js") ? externalFile : externalFile + ".js";
+            const externalFilePath = path.resolve(currentFile, "..", withExtension);
+            // read external ast and find declartions from there
+            const externalContent = readFile(externalFilePath);
+            const externalAst = babelParser.parse(externalContent, { sourceType: "module" });
+            const detectedExternalDeclarations = findUnionDeclarations(externalAst.program.body, externalFilePath, readFile);
+           
+            for (var i = 0; i < detectedExternalDeclarations.length; i++) {
+                externalDeclarations.push(detectedExternalDeclarations[i]);
+            }
+            
+        }
+    }
+
+    if (unionImports.length === 0) {
+        return externalDeclarations;
+    }
+
+    const localUnionId = importDeclarations[0].local;
+
+    return nodes.concat(findExports(nodes)).filter(node => {
         return node.type === "VariableDeclaration" 
             && node.declarations.length === 1
             && node.declarations[0].id.type === "Identifier"
@@ -72,6 +136,7 @@ const findUnionDeclarations = function (nodes, tagmemeImports) {
     }).map(node => {
         return { 
             unionType: node.declarations[0].id.name, 
+            loc: node.loc,
             cases: node.declarations[0].init.arguments[0].elements.map(elem => elem.value)
         }
     }); 
@@ -108,21 +173,27 @@ const normalize = function (n) {
     return n.toString();
 }; 
 
-const log = (sourcePath, msg) => { 
-    console.log(chalk.cyan(sourcePath));
-    console.log(chalk.bgRed(msg));
-}
-
 const fsReader = filename => fs.readFileSync(filename, "utf8");
 
-const analyze = function (filename, syncReader) {
+const analyze = function (cwd, filename, syncReader) {
     const errors = [ ]; 
-    const fullPath = path.resolve(__dirname, filename) 
+    const fullPath = path.resolve(cwd, filename) 
     const contents = syncReader(fullPath);
     const codeAst = babelParser.parse(contents, { sourceType: "module" });
-    const tagmemeImports = findImports(codeAst.program.body);
-    const unionDeclarations = findUnionDeclarations(codeAst.program.body, tagmemeImports); 
+    const unionDeclarations = findUnionDeclarations(codeAst.program.body, fullPath, syncReader); 
     const matchUsages = findMatchUsages(codeAst);
+
+    unionDeclarations.forEach(decl => {
+        for(var i = 0; i < decl.cases.length; i++) {
+            if (decl.cases[i] === "match") {
+                errors.push(AnalyzerError.UsingMatchAsUnionCase({
+                    modulePath: fullPath,
+                    location: decl.loc,
+                    errorMessage: "Declaration of union cases for type '" + decl.unionType + "' cannot contain 'match' as a union case"
+                }))
+            }
+        }
+    });
 
     for (var i = 0; i < matchUsages.length; i++) {
         const currentUsage = matchUsages[i];
@@ -143,12 +214,11 @@ const analyze = function (filename, syncReader) {
                         location: currentUsage.loc,
                         usedTypeName: currentUsage.unionType,
                         possibleAlternatives: [alternativeTypeName], 
-                        errorMessage: "Detected use of 'match' for type '" + currentUsage.unionType + "' but no declaration of the type was found, did you mean '" + alternativeTypeName + "'"
+                        errorMessage: "Detected use of 'match' for type '" + currentUsage.unionType + "' but no declaration of the type was found, did you mean '" + alternativeTypeName + "'?"
                     });
 
                     errors.push(unionTypeNameIncorrect);
-                    //log(pathLog, "Detected use of 'match' for type '" + currentUsage.unionType + "' but no declaration of the type was found, did you mean '" + alternativeTypeName + "'");
-                
+        
                 } else {
 
                     const possibleWords = nearbyWords.map(word => word.unionType).join(",");
@@ -158,12 +228,10 @@ const analyze = function (filename, syncReader) {
                         location: currentUsage.loc,
                         usedTypeName: currentUsage.unionType,
                         possibleAlternatives: possibleWords, 
-                        errorMessage: "Detected use of 'match' for type '" + currentUsage.unionType + "' but no declaration of the type was found, did you mean '" + nearbyWords[0].unionType + "'"
+                        errorMessage: "Detected use of 'match' for type '" + currentUsage.unionType + "' but no declaration of the type was found, did you mean '" + nearbyWords[0].unionType + "'?"
                     });
 
                     errors.push(unionTypeNameIncorrect);
-                    
-                    //log(pathLog, "Detected use of 'match' for type '" + currentUsage.unionType + "' but no declaration of the type was found, did you mean any of these: [" + possibleWords + "].");
                 }
             } else {
                 
@@ -176,8 +244,6 @@ const analyze = function (filename, syncReader) {
                 });
 
                 errors.push(unionTypeNameIncorrect);
-
-                //log(pathLog, "Detected use of 'match' for type '" + currentUsage.unionType + "' but no declaration of the type was found");
             }
 
             continue;
@@ -231,11 +297,9 @@ const analyze = function (filename, syncReader) {
                                 usedUnionType: declaredUnion.unionType,
                                 usedUnionCase: currentKey, 
                                 possibleAlternatives: nearbyWords,
-                                errorMessage: "Detected match against union case '" + currentKey + "' but no declaration of this case was found in type" + declaredUnion.unionType + ", did you mean '" + nearbyWords[0] + "'"
+                                errorMessage: "Detected match against union case '" + currentKey + "' but no declaration of this case was found in type " + declaredUnion.unionType + ", did you mean '" + nearbyWords[0] + "'?"
                             }));
-
-                            // log(pathLog, "Detected match against union case '" + currentKey + "' but no declaration of this case was found in type" + declaredUnion.unionType + ", did you mean '" + nearbyWords[0] + "'");
-                        
+ 
                         } else {
 
                             const possibleWords = nearbyWords.join(", ");
@@ -246,11 +310,8 @@ const analyze = function (filename, syncReader) {
                                 usedUnionType: declaredUnion.unionType,
                                 usedUnionCase: currentKey, 
                                 possibleAlternatives: nearbyWords,
-                                errorMessage: "Detected match against union case '" + currentKey + "' but no declaration of this case was found in type" + declaredUnion.unionType + ", did you mean '" + possibleWords + "'"
+                                errorMessage: "Detected match against union case '" + currentKey + "' but no declaration of this case was found in type" + declaredUnion.unionType + ", did you mean '" + possibleWords + "'?"
                             }));
-
-                            
-                            //log(pathLog, "Detected match against union case '" + currentKey + "' but no declaration of this case was found in type '" + declaredUnion.unionType + "', did you mean one of these cases: [" + possibleWords + "].");
                         }
 
                     } else {
@@ -263,8 +324,6 @@ const analyze = function (filename, syncReader) {
                             possibleAlternatives: [],
                             errorMessage: "Detected match against union case '" + currentKey + "' but no declaration of this case was found in type '" + declaredUnion.unionType + "'"
                         }));
-
-                        //log(pathLog,"Detected match against union case '" + currentKey + "' but no declaration of this case was found in type '" + declaredUnion.unionType + "'.");
                     }
 
                     continue;
@@ -287,8 +346,6 @@ const analyze = function (filename, syncReader) {
                         possibleAlternatives: [],
                         errorMessage: "Declared union case '" + declaredCase + "' was found in the type '" + declaredUnion.unionType + "' but it wasn't handled in the 'match' function"
                     }));
-
-                    //log(pathLog, "Declared union case '" + declaredCase + "' was found in the type '" + declaredUnion.unionType + "' but it wasn't handled in the 'match' function");
                 }
             }
         }
@@ -297,14 +354,41 @@ const analyze = function (filename, syncReader) {
     return errors;
 }
 
-const analyzeUsingFileSystem = filename => analyze(filename, fsReader);
+const log = (sourcePath, msg) => { 
+    console.log(chalk.cyan(sourcePath));
+    console.log(chalk.bgRed(msg));
+}
+
+const logErrorsAndExit = errors => {
+    
+    if (errors.length === 0) {
+        console.log(chalk.green("No errors found"));
+        process.exit(0);
+    } 
+    const errorWord = errors.length === 1 ? " error" : " errors"
+    console.log(chalk.bgRed("Found " + errors.length + errorWord));
+    for(var i = 0; i < errors.length; i++) {
+        const errorLocation = errors[i]["_data"].location; 
+        const modulePath = errors[i]["_data"].modulePath;
+        const errorMsg = errors[i]["_data"].errorMessage;
+        const sourcePath = modulePath + ":" + normalize(errorLocation.start.line) + ":" + normalize(errorLocation.end.line);
+        console.log(chalk.cyan(sourcePath));
+        console.log(chalk.bgRed(errorMsg));
+    }
+
+    process.exit(1);
+};
+
+const analyzeUsingFileSystem = (cwd, filename) => analyze(cwd, filename, fsReader);
 
 module.exports = {
     unionImported: unionImported,
     unionRequired: unionRequired,
     findImports: findImports, 
+    findExports: findExports,
     findUnionDeclarations: findUnionDeclarations,
     analyze: analyze,
+    logErrorsAndExit: logErrorsAndExit,
     analyzeUsingFileSystem: analyzeUsingFileSystem,
     AnalyzerError: AnalyzerError
 }
