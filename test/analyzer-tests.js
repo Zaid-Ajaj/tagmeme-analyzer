@@ -72,6 +72,22 @@ describe("Analyzer", function() {
         });
     });
 
+    describe("groupBy()", function() {
+        it("hopefully works...", function() { 
+            const declaration = {
+                unionType: 'Option',
+                cases: ['Some', 'None', 'None']
+            }
+
+            const groups = analyzer.groupBy(declaration.cases, caseName => caseName);
+            const keys = Object.keys(groups);
+            assert.equal(2, keys.length);
+            assert.equal(1, groups['Some'].length);
+            assert.equal(2, groups['None'].length);
+        })
+    });
+
+
 
     describe("findUnionDeclarations()", function() {
 
@@ -263,6 +279,54 @@ describe("Analyzer", function() {
             }, () => assert.fail('Expected analyzer error of union case UnionCaseHandledButNotDeclared'));
         }); 
 
+        it("returns an error when a case is handled but not declared in the type with multiple possible alternatives", function() {
+            const code = [ 
+                "import { union as makeUnion } from 'tagmeme';",
+                "const Result = makeUnion([ 'Erro', 'Error' ]);",
+                "const success = Result.Ok(1);",
+                // Error => handling too many cases, the 'Other' case in not declared in the `Result`
+                "const value = Result.match(success, { Erro: n => n + 1, Error: () => 1, Erron: () => 3 })"
+            ];
+
+            const mockReader = filename => code.join("\n");
+            const errors = analyzer.analyze("cwd", "./irrelevant-filename", mockReader);
+            assert.equal(1, errors.length);
+            AnalyzerError.match(errors[0], { 
+                UnionCaseHandledButNotDeclared: errorInfo => {
+                    assert.equal('Result', errorInfo.usedUnionType);
+                    assert.equal('Erron', errorInfo.usedUnionCase);
+                }
+            }, () => assert.fail('Expected analyzer error of union case UnionCaseHandledButNotDeclared'));
+        }); 
+
+        it("returns an error when a case has a duplicate declaration", function() {
+            const code = [ 
+                "import { union as makeUnion } from 'tagmeme';",
+                "const Duplicated = makeUnion([ 'Ok', 'Ok' ]);"
+            ];
+
+            const mockReader = filename => code.join("\n");
+            const errors = analyzer.analyze("cwd", "./irrelevant-filename", mockReader);
+            assert.equal(1, errors.length);
+            AnalyzerError.match(errors[0], { 
+                DuplicateUnionCaseDeclaration: errorInfo => assert.ok(true)
+            }, () => assert.fail('Expected analyzer error of union case UnionCaseHandledButNotDeclared'));
+        }); 
+
+        it("returns an error when 'match' is used as a union case", function() {
+            const code = [ 
+                "import { union as makeUnion } from 'tagmeme';",
+                "const UsesMatch = makeUnion([ 'Ok', 'Error', 'match' ]);"
+            ];
+
+            const mockReader = filename => code.join("\n");
+            const errors = analyzer.analyze("cwd", "./irrelevant-filename", mockReader);
+            assert.equal(1, errors.length);
+            AnalyzerError.match(errors[0], { 
+                UsingMatchAsUnionCase: errorInfo => assert.ok(true)
+            }, () => assert.fail('Expected analyzer error of union case UnionCaseHandledButNotDeclared'));
+        }); 
+
         it("returns an error when all cases are handled and catchAll is redundant", function() {
             const code = [ 
                 "import { union as makeUnion } from 'tagmeme';",
@@ -312,5 +376,35 @@ describe("Analyzer", function() {
                 }
             }, () => assert.fail('Expected analyzer error of union case UnionCaseHandledButNotDeclared'));
         });
+    });
+
+    describe("logErrorAndExit()", function() {
+        it("Exits process with exit code 0 when there are no errors", function() {
+            const errors = [ ];
+            const mockProccess = { exit: n => assert.equal(0, n) };
+            const logs = [ ];
+            const logger = log => logs.push(log); 
+            analyzer.logErrorsAndExit(errors, logger, mockProccess);
+        }); 
+
+        it("Exits process with exit code 1 when there are errors", function() {
+            
+            const code = [ 
+                "import { union as makeUnion } from 'tagmeme';",
+                "const Result = makeUnion([ 'Ok', 'Error' ]);",
+                "const success = Result.Ok(1);",
+                // Error => catchAll (2nd arg) is redundant
+                "const value = Result.match(success, { Ok: n => n + 1, Error: () => 1 }, () => 0)"
+            ];
+
+            const mockReader = filename => code.join("\n");
+            const errors = analyzer.analyze("cwd", "./irrelevant-filename", mockReader);
+            assert.equal(1, errors.length);
+            const mockProccess = { exit: n => assert.equal(1, n) };
+            const logs = [ ];
+            const logger = log => logs.push(log); 
+            analyzer.logErrorsAndExit(errors, logger, mockProccess);
+        }); 
+
     });
 });

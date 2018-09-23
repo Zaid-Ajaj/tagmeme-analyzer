@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "debug": "node --nolazy --inspect-brk=9229 index.js ./sample/app.js",
-    "test": "mocha ./test/analyzer-tests.js"
+    "test": "nyc --reporter=html --reporter=text mocha ./test/analyzer-tests.js",
+    "coverage": "nyc report --reporter=text-lcov | coveralls",
+    "clean": "rm -rf coverage && rm -rf .nyc_output"
   },
   "keywords": [],
   "author": "Zaid Ajaj",
@@ -19,7 +21,9 @@
   },
   "devDependencies": {
     "chai": "^4.1.2",
-    "mocha": "^5.2.0"
+    "coveralls": "^3.0.2",
+    "mocha": "^5.2.0",
+    "nyc": "^13.0.1"
   },
   "bin": {
     "tagmeme-analyzer": "./index.js"

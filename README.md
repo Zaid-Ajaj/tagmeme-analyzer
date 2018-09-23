@@ -1,5 +1,5 @@
 # tagmeme-analyzer
-Static code analyzer and CLI tool for javascript to verify correctness of pattern matching when using [tagmeme](https://github.com/andrejewski/tagmeme): a simple library to implement tagged union cases. 
+Static code analyzer and CLI tool for javascript to verify correctness of pattern matching when using [tagmeme](https://github.com/andrejewski/tagmeme) by [andrejewski](https://github.com/andrejewski)
 
 ## The problem
 When using `tagmeme`, you have to define the union cases as strings, here is an example:
@@ -78,3 +78,7 @@ const withCatchAll = Option.match(color, {
 Now running `tagmeme-analyzer` against `{repo}/sample/app.js` gives the following:
 
 ![example](example.png)
+
+### Current Limitations (PRs <=> :heart:) 
+ - Imported union type declarations cannot be aliased
+ - Only ES6 exports for now

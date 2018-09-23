@@ -12,7 +12,8 @@ const AnalyzerError = union([
     'UnionCaseDeclaredButNotHandled',
     'UnionCaseHandledButNotDeclared',
     'RedundantCatchAllArgument',
-    'UsingMatchAsUnionCase'
+    'UsingMatchAsUnionCase',
+    'DuplicateUnionCaseDeclaration'
 ]); 
 
 // detects when the 'union' function is imported from tagmeme in ES6 syntax
@@ -168,12 +169,38 @@ const findMatchUsages = function(ast) {
     return matchUsages;
 }
 
+var groupBy = function(xs, f) {
+    return xs.reduce(function(rv, x) {
+      (rv[f(x)] = rv[f(x)] || []).push(x);
+      return rv;
+    }, {});
+};
+
+const findDuplicateUnionCaseDeclarations = function (modulePath, declaration) {
+    const errors = [];
+    const groups = groupBy(declaration.cases, caseName => caseName);
+    var groupKeys = Object.keys(groups);
+    for(var i = 0; i < groupKeys.length; i++) {
+        const caseName = groupKeys[i];
+        const groupElements = groups[caseName];
+        if (groupElements.length > 1) {
+            const error = AnalyzerError.DuplicateUnionCaseDeclaration({
+                modulePath: modulePath, 
+                location: declaration.loc,
+                errorMessage: "Duplicate union case declaration '" + caseName + "' in union type '" + declaration.unionType + "'."
+            });
+
+            errors.push(error);
+        }
+    }
+
+    return errors;
+};
+
 const normalize = function (n) {
     if (n < 10) return "0" + n.toString(); 
     return n.toString();
 }; 
-
-const fsReader = filename => fs.readFileSync(filename, "utf8");
 
 const analyze = function (cwd, filename, syncReader) {
     const errors = [ ]; 
@@ -193,6 +220,13 @@ const analyze = function (cwd, filename, syncReader) {
                 }))
             }
         }
+    });
+
+    unionDeclarations.forEach(decl => {
+        const duplicateCaseErrors = findDuplicateUnionCaseDeclarations(fullPath, decl);
+        duplicateCaseErrors.forEach(error => {
+            errors.push(error);
+        })
     });
 
     for (var i = 0; i < matchUsages.length; i++) {
@@ -258,7 +292,6 @@ const analyze = function (cwd, filename, syncReader) {
             declaredCases.every(declaredCase => usedCases.some(usedCase => usedCase.key.name === declaredCase))
          && usedCases.every(usedCase => declaredCases.some(declaredCase => declaredCase === usedCase.key.name));
 
-        
         if (allCasesHandled && currentUsage.usedCatchAll) {
             
             errors.push(AnalyzerError.RedundantCatchAllArgument({ 
@@ -266,8 +299,6 @@ const analyze = function (cwd, filename, syncReader) {
                 location: currentUsage.loc,
                 errorMessage: "All cases were handled, the second argument of function 'match' (catchAll) is redundant and can be removed"
             }))
-
-            //log(pathLog, "All cases were handled, the second argument of function 'match' (catchAll) is redundant and can be removed");
         } 
 
         if (allCasesHandled) {
@@ -354,32 +385,27 @@ const analyze = function (cwd, filename, syncReader) {
     return errors;
 }
 
-const log = (sourcePath, msg) => { 
-    console.log(chalk.cyan(sourcePath));
-    console.log(chalk.bgRed(msg));
-}
-
-const logErrorsAndExit = errors => {
+const logErrorsAndExit = (errors, logger, proc) => {
     
     if (errors.length === 0) {
-        console.log(chalk.green("No errors found"));
-        process.exit(0);
+        logger(chalk.green("No errors found"));
+        proc.exit(0);
+        return;
     } 
+
     const errorWord = errors.length === 1 ? " error" : " errors"
-    console.log(chalk.bgRed("Found " + errors.length + errorWord));
+    logger(chalk.bgRed("Found " + errors.length + errorWord));
     for(var i = 0; i < errors.length; i++) {
         const errorLocation = errors[i]["_data"].location; 
         const modulePath = errors[i]["_data"].modulePath;
         const errorMsg = errors[i]["_data"].errorMessage;
         const sourcePath = modulePath + ":" + normalize(errorLocation.start.line) + ":" + normalize(errorLocation.end.line);
-        console.log(chalk.cyan(sourcePath));
-        console.log(chalk.bgRed(errorMsg));
+        logger(chalk.grey(sourcePath));
+        logger(chalk.bold.red(errorMsg));
     }
 
-    process.exit(1);
+    proc.exit(1);
 };
-
-const analyzeUsingFileSystem = (cwd, filename) => analyze(cwd, filename, fsReader);
 
 module.exports = {
     unionImported: unionImported,
@@ -387,8 +413,9 @@ module.exports = {
     findImports: findImports, 
     findExports: findExports,
     findUnionDeclarations: findUnionDeclarations,
+    findDuplicateUnionCaseDeclarations: findDuplicateUnionCaseDeclarations,
     analyze: analyze,
     logErrorsAndExit: logErrorsAndExit,
-    analyzeUsingFileSystem: analyzeUsingFileSystem,
-    AnalyzerError: AnalyzerError
+    AnalyzerError: AnalyzerError,
+    groupBy: groupBy   
 }
