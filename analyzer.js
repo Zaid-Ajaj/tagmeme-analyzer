@@ -13,7 +13,8 @@ const AnalyzerError = union([
     'UnionCaseHandledButNotDeclared',
     'RedundantCatchAllArgument',
     'UsingMatchAsUnionCase',
-    'DuplicateUnionCaseDeclaration'
+    'DuplicateUnionCaseDeclaration',
+    'UnknownUnionConstructorUsed'
 ]); 
 
 // detects when the 'union' function is imported from tagmeme in ES6 syntax
@@ -176,6 +177,47 @@ var groupBy = function(xs, f) {
     }, {});
 };
 
+const findIncorrectUnionCaseConstructors = function(modulePath, ast, declarations) {
+    const unionConstructorsErrors = [ ];
+    const unionTypeNames = declarations.map(decl => decl.unionType);
+
+    traverse(ast, {
+        enter: function(path) {
+            const node = path.node;
+
+            const isUnionTypeConstructor = 
+                   node.type === "CallExpression"
+                && node.callee.type === "MemberExpression"
+                && node.callee.object.type === "Identifier"
+                && unionTypeNames.indexOf(node.callee.object.name) !== -1
+                && node.callee.property.type === "Identifier"
+                && node.callee.property.name !== "match";
+
+            if (isUnionTypeConstructor) {
+                const unionDeclarations = declarations.filter(decl => decl.unionType === node.callee.object.name);
+                const usedUnionDeclaration = unionDeclarations[0];
+                const allowedCases = usedUnionDeclaration.cases; 
+                const usedConstructor = node.callee.property.name;
+                if (allowedCases.indexOf(usedConstructor) === -1) {
+                    const possibleAlternativeString = allowedCases.map(caseName => "'" + caseName + "'").join(", ");
+
+                    const error = AnalyzerError.UnknownUnionConstructorUsed({
+                        modulePath: modulePath, 
+                        location: node.loc, 
+                        possibleAlternatives: allowedCases,
+                        usedConstructor: usedConstructor,
+                        errorMessage: "Unknown union case constructor '" + usedConstructor + "' for union type '" + usedUnionDeclaration.unionType + "'. Did you mean one of [ " + possibleAlternativeString + " ]?"
+                    })
+
+                    unionConstructorsErrors.push(error);
+                }
+            }
+        }
+    })
+
+    return unionConstructorsErrors;
+}
+
 const findDuplicateUnionCaseDeclarations = function (modulePath, declaration) {
     const errors = [];
     const groups = groupBy(declaration.cases, caseName => caseName);
@@ -228,6 +270,12 @@ const analyze = function (cwd, filename, syncReader) {
             errors.push(error);
         })
     });
+
+    const constructorErrors = findIncorrectUnionCaseConstructors(fullPath, codeAst, unionDeclarations);
+
+    constructorErrors.forEach(error => {
+        errors.push(error);
+    })
 
     for (var i = 0; i < matchUsages.length; i++) {
         const currentUsage = matchUsages[i];
@@ -333,7 +381,7 @@ const analyze = function (cwd, filename, syncReader) {
  
                         } else {
 
-                            const possibleWords = nearbyWords.join(", ");
+                            const possibleWords = nearbyWords.map(word => "'" + word + "'").join(", ");
 
                             errors.push(AnalyzerError.UnionCaseHandledButNotDeclared({ 
                                 modulePath: fullPath, 
@@ -341,7 +389,7 @@ const analyze = function (cwd, filename, syncReader) {
                                 usedUnionType: declaredUnion.unionType,
                                 usedUnionCase: currentKey, 
                                 possibleAlternatives: nearbyWords,
-                                errorMessage: "Detected match against union case '" + currentKey + "' but no declaration of this case was found in type" + declaredUnion.unionType + ", did you mean '" + possibleWords + "'?"
+                                errorMessage: "Detected match against union case '" + currentKey + "' but no declaration of this case was found in type" + declaredUnion.unionType + ", did you mean one of [ " + possibleWords + " ]?"
                             }));
                         }
 

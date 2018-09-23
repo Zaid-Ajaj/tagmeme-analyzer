@@ -283,7 +283,7 @@ describe("Analyzer", function() {
             const code = [ 
                 "import { union as makeUnion } from 'tagmeme';",
                 "const Result = makeUnion([ 'Erro', 'Error' ]);",
-                "const success = Result.Ok(1);",
+                "const success = Result.Erro(1);",
                 // Error => handling too many cases, the 'Other' case in not declared in the `Result`
                 "const value = Result.match(success, { Erro: n => n + 1, Error: () => 1, Erron: () => 3 })"
             ];

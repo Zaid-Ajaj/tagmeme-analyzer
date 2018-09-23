@@ -52,6 +52,9 @@ const colorValue = Option.match(color, {
     None: () => 'blue'
 });
 
+// Incorrect union constructor
+const invalid = Option.Nome();
+
 // Type name misspelled: 'Option' => 'Opion'
 const otherValue = Opion.match(color, {
     Some: colorName => colorName, 
@@ -82,5 +85,7 @@ Now running `tagmeme-analyzer` against `{repo}/sample/app.js` gives the followin
 ![example](example.png)
 
 ### Current Limitations (PRs <=> :heart:) 
+ - Analyzer runs against one root file (local imports are traversed)
  - Imported union type declarations cannot be aliased
  - Only ES6 exports for now
+ - Types of union case data are not checked
