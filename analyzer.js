@@ -147,7 +147,7 @@ const findMatchUsages = function(ast) {
     const matchUsages = [ ];
     
     traverse(ast, {
-        enter(path) {
+        enter: function(path) {
           const node = path.node; 
           const isMatchCall = 
                node.type === "CallExpression"

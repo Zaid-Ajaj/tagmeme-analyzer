@@ -24,19 +24,21 @@ I really like the API but because this is javascript, it can be very error prone
  - When there is a redundant `catchAll` argument that will never match (see [docs](https://github.com/andrejewski/tagmeme#documentation))
  - Using `match` as a union case
  - Using duplicate union cases in the declaration
+ - Misspelling the union case when constructing a value
 
 ## Solution: Static code analysis
 Because there are known variables where things could go wrong at "compile" time, why not write a program that checks the correctness of pattern matching? This is what this project provides implemented as a cli tool for easy integration with existing projects:
 ```
 npm install --save-dev tagmeme-analyzer
 ```
-here is a sample code with the errors that get generated:
+Let's see it in action: here is a sample code with the errors that get generated:
 ### {repo}/sample/types.js
 ```js
 import { union as makeUnion } from 'tagmeme'
 export const Numbers = makeUnion([ 'One', 'Two', 'match' ]);
 export const Option = makeUnion([ 'Some', 'None' ]);
 export const Result = makeUnion([ 'Ok', 'Error' ]);
+export const Deplicates = makeUnion([ 'First', 'First' ]);
 ```
 ### {repo}/sample/app.js
 ```js
@@ -44,7 +46,7 @@ import { Option, Result } from './types'
 
 const color = Option.Some('green')
 
-// Correct use, no errors
+// Correct usage, no errors
 const colorValue = Option.match(color, {
     Some: colorName => colorName, 
     None: () => 'blue'
@@ -56,7 +58,7 @@ const otherValue = Opion.match(color, {
     None: () => 'blue'
 });
 
-// Union case misspelled: 'Error' => 'Erro'
+// Error misspelled => 'Erro'
 const firstResult = Result.match(Result.Ok('success'), {
     Ok: value => value, 
     Erro: () => 'blue'
@@ -69,7 +71,7 @@ const secondResult = Result.match(Result.Ok('success'), {
     Other: () => 'too many cases handled'
 });
 
-// Redundant catchAll (second argument)
+// redundant catchAll argument
 const withCatchAll = Option.match(color, {
     Some: colorName => colorName, 
     None: () => 'blue'
