@@ -1,6 +1,6 @@
 {
   "name": "tagmeme-analyzer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Static code analyzer and CLI tool for javascript to verify correctness of pattern matching when using tagmeme",
   "main": "index.js",
   "scripts": {
@@ -11,7 +11,7 @@
   },
   "keywords": [],
   "author": "Zaid Ajaj",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "@babel/parser": "^7.1.0",
     "babel-traverse": "^6.26.0",

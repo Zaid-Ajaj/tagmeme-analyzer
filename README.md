@@ -1,8 +1,6 @@
 # tagmeme-analyzer 
 
-[![Build Status](https://travis-ci.org/Zaid-Ajaj/tagmeme-analyzer.svg?branch=master)](https://travis-ci.org/Zaid-Ajaj/tagmeme-analyzer) 
-[![npm](https://img.shields.io/npm/v/:package.svg)](https://www.npmjs.com/package/tagmeme-analyzer)
-[![Coverage Status](https://coveralls.io/repos/github/Zaid-Ajaj/tagmeme-analyzer/badge.svg?branch=master)](https://coveralls.io/github/Zaid-Ajaj/tagmeme-analyzer?branch=master)
+[![Build Status](https://travis-ci.org/Zaid-Ajaj/tagmeme-analyzer.svg?branch=master)](https://travis-ci.org/Zaid-Ajaj/tagmeme-analyzer)   [![Coverage Status](https://coveralls.io/repos/github/Zaid-Ajaj/tagmeme-analyzer/badge.svg?branch=master)](https://coveralls.io/github/Zaid-Ajaj/tagmeme-analyzer?branch=master) [![npm](https://img.shields.io/npm/v/:package.svg)](https://www.npmjs.com/package/tagmeme-analyzer)
 
 Static code analyzer and CLI tool for javascript to verify correctness of pattern matching when using [tagmeme](https://github.com/andrejewski/tagmeme) by [andrejewski](https://github.com/andrejewski)
 
