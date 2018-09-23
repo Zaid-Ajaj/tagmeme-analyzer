@@ -4,7 +4,8 @@ Static code analyzer and CLI tool for javascript to verify correctness of patter
 ## The problem
 When using `tagmeme`, you have to define the union cases as strings, here is an example:
 ```js
-import { union } from "tagemem" 
+import { union } from "tagememe" 
+
 const Option = union([ "Some", "None" ])
 ```
 We are declaring the `Option` type that can either be `Some` or `None`. These two cases are considered constructors when creating a value of the `Option` type:
@@ -85,7 +86,7 @@ Now running `tagmeme-analyzer` against `{repo}/sample/app.js` gives the followin
 ![example](example.png)
 
 ### Current Limitations (PRs <=> :heart:) 
- - Analyzer runs against one root file (local imports are traversed)
+ - Analyzer runs against one root file (local imports are traversed just to find declarations)
  - Imported union type declarations cannot be aliased
  - Only ES6 exports for now
  - Types of union case data are not checked
