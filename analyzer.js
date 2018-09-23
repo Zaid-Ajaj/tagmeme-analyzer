@@ -139,7 +139,8 @@ const findUnionDeclarations = function (nodes, currentFile, readFile) {
         return { 
             unionType: node.declarations[0].id.name, 
             loc: node.loc,
-            cases: node.declarations[0].init.arguments[0].elements.map(elem => elem.value)
+            cases: node.declarations[0].init.arguments[0].elements.map(elem => elem.value),
+            modulePath: currentFile
         }
     }); 
 }
@@ -227,7 +228,7 @@ const findDuplicateUnionCaseDeclarations = function (modulePath, declaration) {
         const groupElements = groups[caseName];
         if (groupElements.length > 1) {
             const error = AnalyzerError.DuplicateUnionCaseDeclaration({
-                modulePath: modulePath, 
+                modulePath: declaration.modulePath, 
                 location: declaration.loc,
                 errorMessage: "Duplicate union case declaration '" + caseName + "' in union type '" + declaration.unionType + "'."
             });
@@ -256,7 +257,7 @@ const analyze = function (cwd, filename, syncReader) {
         for(var i = 0; i < decl.cases.length; i++) {
             if (decl.cases[i] === "match") {
                 errors.push(AnalyzerError.UsingMatchAsUnionCase({
-                    modulePath: fullPath,
+                    modulePath: decl.modulePath,
                     location: decl.loc,
                     errorMessage: "Declaration of union cases for type '" + decl.unionType + "' cannot contain 'match' as a union case"
                 }))
